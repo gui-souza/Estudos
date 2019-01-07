@@ -1,0 +1,98 @@
+---
+title: "TESTE_RECEITA"
+author: "Juliana Santiago"
+date: "6 de agosto de 2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## TESTE RECEITA_RJ AT? JARQUEBERA
+
+
+```{r}
+library(readxl)
+library(tseries)
+library(ggplot2)
+library(forecast)
+library(foreign)
+library(urca)
+#library(tidyquant)
+
+```
+
+
+## Importando do Excel os dados mensais de receita bruta do Estado do Rio de Janeiro:
+
+```{r}
+RECEITA_RJ_R <- read_excel("UFF MESTRADO/4? SEMESTRE 2018.1/Regress?o/RECEITA_RJ_R.xlsx", 
++     col_types = c("numeric"))
+View(RECEITA_RJ_R)
+```
+
+## Avisar ao R que se trata de uma s?rie de tempo com frequ?ncia mensal e in?cio em jan/2001:
+
+```{r}
+serie_receita<- ts(RECEITA_RJ_R, start = c(2001, 1), frequency = 12)
+```
+
+## Visualizando os dados ao longo do tempo:
+
+```{r}
+plot(serie_receita)
+plot(serie_receita, col='blue', main = 'Comportamento dados', xlab = 'M?s/ano')
+
+```
+
+## Estat?stica b?sica:
+
+```{r}
+summary(serie_receita) 
+```
+
+## A proximidade dos valores de m?dia e mediana sugere uma normalidade dos dados.
+
+```{r}
+jarque.bera.test(serie_receita)
+```
+
+## O teste de Jarque-Bera tem como hip?tese nula a normalidade. Assim, se o p-valor for menor do que 5% (ou 10%), p<0,05 (p<0,10), ent?o rejeita-se a normalidade. J? se p>0,05, aceita-se a normalidade. 
+## Nesse caso, o pvalor=0,018, ou seja, para um n?vel de confian?a de 95%, a s?ries n?o possui distribui??o normal.
+
+## ESTACIONARIDADE
+
+## Na maioria dos testes a hip?tese nula ? de que a s?rie tenha raiz unit?ria, e portanto n?o seja estacion?ria, logo: No teste KPSS a hip?tese nula ? de que n?o existe raiz unit?ria. 
+## 1. Augmented Dickey-Fuller (ADF) 
+## 2. Phillips-Perron (PP) 
+## H0 : tem raiz unit?ria (n?o ? estacion?ria) 
+## H1 : n?o tem raiz unit?ria (? estacion?ria)
+## Assim, se o p-valor for menor do que 5% (ou 10%), p<0,05 (p<0,10), ent?o rejeita-se a n?o-estacionariedade. J? se p>0,05, aceita-se a n?o-estacionariedade. 
+
+## DF Test
+
+```{r}
+ur.df(y=serie_receita, type = "none", lags=1, selectlags = "Fixed")
+```
+
+## Nesse caso, o pvalor=-0,656, ou seja, para um n?vel de confian?a de 95%, a s?rie n?o ? estacion?ria (possui raiz unit?ria).
+
+## DF Test
+
+```{r}
+adf.test(serie_receita)
+```
+
+## Nesse caso, o pvalor=0,4276, ou seja, para um n?vel de confian?a de 95%, a s?rie n?o ? estacion?ria (possui raiz unit?ria).
+
+
+## PP Test
+
+```{r}
+pp.test(serie_receita)
+```
+
+## Nesse caso, o pvalor=0,01, ou seja, para um n?vel de confian?a de 95%, a s?rie ? estacion?ria (n?o possui raiz unit?ria).

@@ -1,0 +1,184 @@
+---
+title: Comparativo da evolução das receitaeitas do RJ e preço internacional do petróleo
+  (Brent)
+author: "Juliana Santiago"
+date: "6 de agosto de 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(XLConnect)
+#library(xts)
+library(tseries)
+library(ggplot2)
+#library(foreceitaast)
+library(foreign)
+#library(urca)
+#library(quantmod)
+#library(tidyquant)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### TESTE receitaEITA_RJ ATÉ JARQUEBERA
+
+#### Etapas que você seguiu
+
+- Importar do Excel os dados mensais de receitaeita bruta do Estado do Rio de Janeiro:
+```{r juliana_1, eval=FALSE, echo=FALSE, message=FALSE}
+receitaEITA_RJ_R <- read_excel("UFF MESTRADO/4? SEMESTRE 2018.1/Regress?o/receitaEITA_RJ_R.xlsx", 
+     col_types = c("numeric"))
+View(receitaEITA_RJ_R)
+```
+
+```{r guilherme_1, echo=TRUE, message=FALSE}
+# Sempre use o diretorio atual onde estão os arqivos em que você #está trabalhando. Por exemplo, se o seu wd (working direceitatory) está em C:/Users/Juliana/Documents/Mestrado, não preceitaisa dar todo este caminho para o comando read_excel. Basta navegar até a pastaonde está o arquivo .Rmd usando a aba de exploração de arquivos, abaixo do Environment. Nela vc pode clicar em "More" (uma engrenagem azul e depois set as working direceitatory. Assim vc só preceitaisa usar o nome do arquivo como argumento da função, como fiz abaixo.)
+
+# Usa sempre uma variável fixa pra leitura de dados. A partir dele vc faz as modelagens necessárias. Por exemplo, usei a variável 'dados' como fixa. Com base nela vc vai derivando as suas análises. Ex.: receitaeitas_2010 <- dados %>% filter(2010)
+
+#Busco e armazeno dados das receitaeitas do RJ e do preço histórico do brent.
+
+criarSerieRJ <- function(yearStart = 2001, yearEnd = 2017, comCedae = TRUE) {
+    
+    dadosReceitaRJ <- loadWorkbook("serie_historica_ate_2017.xls")
+    
+    sheetNames <- getSheets(dadosReceitaRJ)
+    numSheets <- length(excel_sheets("serie_historica_ate_2017.xls"))
+    
+    
+    out <- data.frame(matrix(ncol = 0, nrow = 0))
+    
+    #currentYear <- yearStart
+    #currentYear <- 2009
+    
+    for (i in 1:numSheets) {
+        #implementando verificação pelo nome da aba
+        #se tem 'com ...'
+        temCom <- grepl("com", sheetNames[i], ignore.case = T)
+        temSem <- grepl("sem", sheetNames[i], ignore.case = T)
+        
+        #leio abas que tem "com cedae" ou "sem cedae" comparando com parâmetro @comCedae 
+        #OU abas que NÃO tem nem "com cedae" e nem "sem cedae"
+        if(((temCom == TRUE & comCedae == TRUE)  | (temSem == TRUE & comCedae == FALSE)) |
+           (temCom == FALSE & temSem == FALSE)) {
+            #quero ver abas "com cedae"
+            receitaAnoRj <- readWorksheet(dadosReceitaRJ, sheet = i) %>% 
+            #receitaAnoRj <- readWorksheet(dadosReceitaRJ, sheet = 30) %>% 
+                filter(.[,1] == "Total Geral" ) %>% 
+                slice(1) %>% 
+                select(-c(1, 2, 15:ncol(.)))
+            
+            #populando saída
+            df <- data.frame(matrix(nrow = 12, ncol = 2))
+            
+            #coletar o ano (XXXX) da label da aba
+            anoDaAba <- substr(sheetNames[i], 1, 4)
+            mesAno <- c()
+            
+            #for (j in 1:12) mesAno <- c(mesAno, paste(j,'/', currentYear, sep = ''))
+            for (j in 1:12) mesAno <- c(mesAno, paste(j,'/', anoDaAba, ' ',sheetNames[i],' ', sep = ''))
+            
+            #receita <- as.numeric(as.vector(receitaAnoRj[1,]))
+            names(receitaAnoRj) <- NULL
+            receita <- unlist(receitaAnoRj)
+            
+            df <- cbind(mesAno, receita)
+            out <- rbind(out, df)
+            
+            #currentYear = currentYear + 1
+            #if(currentYear > yearEnd) break
+        }
+    }
+    out
+}
+
+df <- criarSerieRJ(comCedae = T)
+
+#df <- df %>% 
+#    mutate(receita_temp = receita) %>% 
+#    mutate(dot_count = str_count(receita, '\\.')) %>% 
+#    mutate(receita_temp = ifelse(dot_count == 3, 
+#                                 gsub('\\.', '', as.factor(receita_temp)), 
+#                                 gsub('\\,', '.',as.factor(receita_temp))
+#                                 )) %>% 
+#    mutate(receita_temp = ifelse(dot_count == 3,
+#                                 gsub('\\,', '.',as.factor(receita_temp)),
+#                                      receita_temp)) %>% 
+#    select(-c(dot_count, receita)) %>% 
+#    rename(., receita = receita_temp)
+
+repl = function(x)setNames(c("","."),c(".",","))[x]
+df[,2] <- str_replace_all(as.character(df[,2]), "[.](?!\\d+$)|,", repl)
+
+df <- df %>% mutate(receita = as.numeric(receita))
+
+
+
+
+dados_wti <- read.csv(url("https://www.quandl.com/api/v3/datasets/FRED/DCOILWTICO.csv?api_key=aMnGQskzHkeiZEeSM_zW"))
+
+dados_rj <- df
+
+# Inverto a ordem das linhas na vertical
+dados_wti <- dados_wti[nrow(dados_wti):1,]
+# Seleciono apenas a coluna com o valor da cotação
+#dados_wti <- dados_wti %>% select(Value)
+```
+
+- Avisar ao R que se trata de uma série de tempo com frequência mensal e início em jan/2001:
+```{r juliana_2, eval=FALSE, echo=FALSE, message=FALSE}
+serie_receita <- ts(receitaEITA_RJ_R, start = c(2001, 1), frequency = 12)
+```
+
+```{r guilherme_2, echo=TRUE, message=FALSE}
+# Crio as "ts" para cada série
+# Os períodos para fins de composição das séries  são iguais.
+ts_receitas <- ts(dados_rj, start = c(2001, 1), frequency = 12)
+ts_wti <- ts(dados_wti, start = c(2001, 1), frequency = 12)
+```
+
+- Visualizar os dados ao longo do tempo:
+```{r juliana_3, eval=FALSE, echo=FALSE, message=FALSE}
+plot(serie_receitas)
+plot(serie_receitaeita, col='blue', main = 'Comportamento dados', xlab = 'Mês/ano')
+```
+
+```{r guilherme_3, echo=FALSE, message=FALSE}
+#par(mfrow=c(2,1)) # Plotar 2 gráficos: 2 linhas, 1 coluna
+
+plot.ts(ts_receitas, col = "blue", main = "receitaeita do RJ (R$)",
+        ylab = "receitaeita em Milhões", xlab = "")
+plot.ts(ts_wti, col = "brown", main = "Preço do BRENT (USD)",
+        ylab = "Dólares/barril", xlab = "Tempo")
+
+plot(diff(ts_receitas))
+
+acf((ts_receitas), lag = 15)
+```
+
+- Mostrar estatística básica:
+```{r juliana_4, eval=FALSE, echo=FALSE, message=FALSE}
+summary(ts_receitaeitas) 
+```
+
+```{r guilherme_4, echo=FALSE, message=FALSE}
+print("receitaeitas do RJ")
+summary(ts_receitaeitas)
+print("Preço do Brent")
+summary(ts_wti)
+```
+
+#### Teste de Jarque Bera
+A proximidade dos valores de média e mediana sugere uma normalidade dos dados.
+
+```{r juliana_5, eval=TRUE, echo=FALSE, message=FALSE}
+jarque.bera.test(ts_receitaeitas)
+```
+
+O teste de Jarque-Bera tem como hipótese nula a normalidade. Assim, se o p-valor for menor do que 5% (ou 10%), p<0,05 (p<0,10), então rejeita-se a normalidade. Já se p>0,05, aceita-se a normalidade. 
+
+Nesse caso, o pvalor=0,018, ou seja, para um nível de confiança de 95%, a séries nãoo possui distribuição normal.

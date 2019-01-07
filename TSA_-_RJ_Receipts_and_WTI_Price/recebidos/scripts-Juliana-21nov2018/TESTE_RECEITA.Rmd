@@ -1,0 +1,191 @@
+---
+title: "TESTE_RECEITA"
+author: "Juliana Santiago"
+date: "6 de agosto de 2018"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## TESTE RECEITA_RJ
+
+
+```{r}
+library(readxl)
+library(tseries)
+library(ggplot2)
+library(forecast)
+library(foreign)
+library(urca)
+library(tidyquant)
+library(TSstudio)
+library(moments)
+
+```
+
+```{r}
+getwd()
+```
+
+
+## Importando do Excel os dados mensais de receita bruta do Estado do Rio de Janeiro:
+
+```{r}
+RECEITA_RJ_R <- read_excel("~/UFF MESTRADO/4∫ SEMESTRE 2018.1/Regress„o/RECEITA_RJ_R.xlsx")
+
+View(RECEITA_RJ_R)
+```
+
+## Avisar ao R que se trata de uma s√©rie de tempo com frequ√™ncia mensal e in√?cio em jan/2001:
+
+```{r}
+serie_receita<- ts(RECEITA_RJ_R, start = c(2001, 1), frequency = 12)
+```
+
+## Visualizando os dados ao longo do tempo:
+
+```{r}
+plot(serie_receita)
+plot(serie_receita, col='blue', main = 'Comportamento dados', xlab = 'M√™s/ano')
+
+```
+
+## Observando a plotagem dos dados, a sÈrie parece ser n„o estacion·ria, pois n„o apresenta uma regularidade ao longo do tempo. 
+
+## Estat√?stica b√°sica:
+
+```{r}
+summary(serie_receita) 
+```
+
+## A proximidade dos valores de m√©dia e mediana sugere uma simetria da distribui√ß√£o dos dados.
+
+
+
+## HISTOGRAMA
+
+```{r}
+hist(serie_receita)
+```
+
+
+## ASSIMETRIA
+## √çndice de assimetria (skewness). Se |Ia|<= 0,15, a distribui√ß√£o dos dados √©, aproximadamente, sim√©trica. Se 0,15<|Ia|<=1, a distribui√ß√£o √© moderadamente assim√©trica. Se |Ia|>1, a distribui√ß√£o √© altamente assim√©trica.
+
+```{r}
+skewness(serie_receita)
+```
+
+## |Ia|=0,7381 (0,15<|Ia|<=1), o que sugere que a distribui√ß√£o de Receita_RJ √© moderadamente assim√©trica.
+
+## CURTOSE
+## Curtose (Ic) tamb√©m √© uma medida de assimetria. Se Ic = 0,263, a distribui√ß√£o √© mesoc√∫rtica. Se Ic < 0,263, a distribui√ß√£o √© leptoc√∫rtica. Se Ic>0,263, a distribui√ß√£o √© platic√∫rtica. 
+
+```{r}
+kurtosis(serie_receita)
+```
+
+## Ic = 3,58 (>0,263), o que sugere que a distribui√ß√£o √© platic√∫rtica (com curva mais achatada).
+
+## CORRELOGRAMA
+
+## O correlograma √© o gr√°fico utilizado em s√©ries temporais para tra√ßar as autocorrela√ß√µes (tamb√©m chamadas em ingl√™s de ACF = autocorrelation function) em diversas defasagens. A an√°lise desse gr√°fico permite entender se a s√©rie √© aleat√≥ria ou possui alguma tend√™ncia ou sazonalidade.
+
+```{r}
+acf(serie_receita)
+```
+
+## No gr√°fico, o eixo vertical indica a autocorrela√ß√£o e o horizontal a defasagem. A linha tracejada azul indica onde √© significativamente diferente de zero. Como √© poss√?vel ver na imagem,a maior parte dos valores ACF est√£o fora do limite da linha tracejada azul, Ou seja, autocorrela√ß√£o diferente de zero, indicando que a s√©rie n√£o √© aleat√≥ria e que pode haver sazonalidade. 
+## De acordo com a funÁ„o de autocovari‚ncia, a sÈrie È integrada, ou seja, n„o estacion·ria.
+
+
+## ESTACIONARIDADE
+
+## 1. Augmented Dickey-Fuller (ADF) 
+ 
+## H0 : tem raiz unit√°ria (n√£o √© estacion√°ria) 
+## H1 : n√£o tem raiz unit√°ria (√© estacion√°ria)
+## Assim, se o p-valor for menor do que 5%, p<0,05, ent√£o rejeita-se a n√£o-estacionariedade. J√° se p>0,05, aceita-se a n√£o-estacionariedade. 
+
+## Kwiatkowski, Phillips, Schmidt and Shin (1992) propuseram um teste para identificaÁ„o da tendÍncia e/ou nÌvel estacion·rio.
+## Temos ent„o:
+
+## H0 : estacion·ria
+## HA : n„o estacion·ria
+
+```{r}
+
+adf.test(serie_receita)
+kpss.test(serie_receita)
+```
+
+## De acordo com o teste ADF, a sÈrie È n„o estacion·ria, pois o p-valor È alto (>0,05), logo, aceita-se a hipÛtese nula de que a sÈrie È n„o estacion·ria. E o teste KPSS corrobora isso, uma vez que o p-valor È baixo (<0,05), logo aceita-se a hipÛtese alternativa de n„o estacionaridade da sÈrie. 
+
+```{r}
+library(fpp)
+modelo <- auto.arima(serie_receita)
+modelo
+```
+
+## Aplicando-se a funÁ„o autoarima, obtÈm-se um arima (0,1,1).
+
+## Como a sÈrie È n„o estacion·ria, efetua-se a diferenciaÁ„o da mesma.
+
+```{r}
+dados_ts.diff <- diff(serie_receita)
+plot.ts(dados_ts.diff)
+acf(dados_ts.diff)
+adf.test(dados_ts.diff)
+kpss.test(dados_ts.diff)
+```
+
+## Observando a plotagem da sÈrie em primeira diferenÁa, a mesma parece ser estacion·ria, pois aparenta um ruÌdo.
+## De acordo com o teste ADF, a sÈrie È estacion·ria, pois o p-valor È baixo (<0,05), logo, rejeita-se a hipÛtese nula de que a sÈrie È n„o estacion·ria. E o teste KPSS corrobora isso, uma vez que o p-valor È 0,1 (>0,05), logo aceita-se a hipÛtese nula de estacionaridade da sÈrie. Conforme indicado pelo resultado do autoarima.
+
+## Testando um modelo adjacente
+
+```{r}
+adj <- arima(serie_receita, order=c(0,0,2))
+adj
+```
+
+## Ao testar um modelo adjacente de arrima, percebe-se que este obteve um pior resultado. Portanto, usarei o modelo sugerido pelo autorima (0,1,1).
+
+## RESÕDUOS
+
+```{r}
+res <- modelo$residuals
+hist(res,20)
+qqnorm(res)
+qqline(res, col="red")
+```
+
+## Observando o histograma dos resÌduos, os mesmos parecem ter alguma discrep‚ncia nas caldas da distribuiÁ„o, sugerindo a n„o normalidade da sÈrie. E olhando para o resultando do qqplot, percebe-se que os pontos seguem a linha, mas h· maior discrep‚ncia nas caldas da distribuiÁ„o, o que corrobora pra que a sÈrie n„o tenha distribuiÁ„o normal.
+
+```{r}
+jarque.bera.test(res)
+```
+
+## O teste de Jarque-Bera tem como hip√≥tese nula a normalidade. Assim, se o p-valor for menor do que 5%, p<0,05, ent√£o rejeita-se a normalidade. J√° se p>0,05, aceita-se a normalidade. 
+## Nesse caso, o pvalor È muito baixo (>0,05), ou seja, para um n√?vel de confian√ßa de 95%, a s√©rie n√£o possui distribui√ß√£o normal.
+
+
+```{r}
+Box.test(res, type="Ljung")
+```
+
+
+## Como o p-valor do Box test È alto (>0,05), aceita-se a hipÛtese nula de que os valores de autocorrelaÁ„o dos resÌduos s„o nulos, ou seja, n„o s„o significantes.
+
+## PREVIS√O
+
+```{r}
+modelo.forescast<-forecast(modelo, h=24)
+plot(modelo.forescast)
+```
+
