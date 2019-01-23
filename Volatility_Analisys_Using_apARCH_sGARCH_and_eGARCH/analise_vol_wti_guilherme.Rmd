@@ -1,0 +1,339 @@
+---
+title: "Séries Temporais - Análise da volatilidade da série de preços WTI(16)"
+author: "Guilherme Souza"
+date: "21 de dezembro de 2018"
+output:
+  pdf_document: default
+header-includes:
+- \usepackage[alf]{abntex2cite}
+- \usepackage{longtable}
+- \usepackage{graphicx}
+- \usepackage{lscape}
+- \usepackage{enumitem}
+#- \usepackage{caption}
+---
+\renewcommand{\figurename}{Figura}
+\renewcommand{\tablename}{Tabela}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(fig.pos = "H")
+library(kableExtra)
+library(tseries)
+library(timeSeries)
+library(FinTS)
+library(rugarch)
+```
+
+### Requisitos formais
+
+* No arquivo "series1":
+    * Escolher uma série de retornos diferente das que foram vistas em aulas.
+* Realize a estimação da volatilidade condicional com o modelo APARCH(p,q) para os dados de preços da ação escolhida. 
+    * Utilize a distribuição t Student. 
+    * Escolha a ordem (p,q) baseando-se no critério BIC.
+* Ajuste um dos modelo de volatilidade condicional obedecendo o critério BIC. Escolha o modelo, a ordem, a distribuição dos erros. Mostre todos os modelos analisados e faça os testes diagnósticos e gráficos para o modelo escolhido.
+* Escrever a equação do modelo.
+
+### Leitura dos dados
+Neste trabalho serão analisados os preços do 16º contrato de petróleo WTI, correspondentes à 11ª coluna do arquivo disponibilizado. Após a leitura, os dados foram convertidos em um objeto do tipo "time series" por meio da função `timeSeries()` do pacote timeSeries. Em seguida, foram computados os respectivos retornos pela função `returns()` do mesmo pacote citado. A figura \ref{fig:fig1} apresenta o comparativo entre os preços originais e os retornos computados. 
+
+```{r fig1, fig.width=6, fig.align='center', fig.cap='Série dos preços "em natura" do 16º contrato de WTI no primeiro gráfico. Abaixo, os retornos.'}
+prices_data <- read.csv('../../material_recebido/dados/Series1.csv', row.names = 1)
+prices_data <- timeSeries(prices_data)
+wti <- prices_data[,11]
+#wti.ts <- timeSeries(wti)
+wti.rets <- returns(wti)
+
+par(cex.lab = .75, cex.axis = .75, cex.main = .75)
+par(mfrow=c(2,1))
+plot(wti, type="l", ylab="preços", xlab="data")
+plot(wti.rets, type="l", ylab="preços", xlab="data")
+```
+Observando o segundo gráfico da figura \ref{fig:fig1} vemos que a os retornos não são constantes. De acordo com \citeonline[p.~256]{stoffer}, em séries financeiras o retorno no tempo não tem variância constante, além disso, períodos de alta volatilidade tendem a se agrupar. Na figura \ref{fig:fig1} podemos observar que a volatilidade encontra-se agrupada em um grande pacote que vai do início de 2008 a 2010.
+
+### Análise dos dados
+#### Características da distribuição
+
+A tabela \ref{tab:dist-summary} apresenta as principais estatísticas sobre a distribuição da série de retornos. Observamos que o valor da curtose é de 3.35, que é um pouco maior que a da distribuição normal cujo valor é 3. Isso indica que a distribuição possui caldas ligeiramente mais robustas.
+
+```{r fig.align='center', fig.pos='H!'}
+dist.summary <- c(size        = length(wti.rets),
+                  max         = max(wti.rets),
+                  min         = min(wti.rets),
+                  mean        = mean(wti.rets),
+                  sd          = sd(wti.rets),
+                  skewness    = skewness(wti.rets),
+                  kurtosis    = kurtosis(wti.rets),
+                  jarque.bera = jarque.bera.test(wti.rets)$statistic
+                  )
+dist.summary <- t(as.data.frame(dist.summary))
+
+colnames(dist.summary) <- c('Size', 'Max', 'Min', 'Mean', 'SD', 
+                            'Skewness', 'Kurtosis', 'Jarque-Bera')
+row.names(dist.summary) <- 'wti.ret'
+
+kable(dist.summary, 'latex', longtable = T,
+      caption = '\\label{tab:dist-summary}
+      Sumário estatístico da série de retornos.',
+      booktabs = T) %>% 
+    kable_styling(position = 'center')
+rm(dist.summary)
+```
+#### Teste de estacionariedade
+
+A tabela \ref{tab:tab1} demonstra estatísticas dos testes de estacionariedade das séries. No primeiro teste (ADF) o p-valor alto da série permite aceitar a hipótese nula de não estacionariedade. Após computação dos retornos vemos que o teste indica que a série passa a ser estacionária.
+
+O teste KPSS, de forma inversa, revela uma situação atípica pois o p-valor inicial da série original é baixo e permite aceitar a hipótese alternativa de estacionariedade. Contudo, após transformação para retornos o p-valor aumenta, rejeitando a hipótese de estacionariedade e indicando não estacionariedade.
+
+```{r tbl1, fig.align='center', fig.pos='H'}
+
+original.series <- list(adf.test(wti), 
+                     kpss.test(wti))
+returns.series <- list(adf.test(wti.rets),
+                    kpss.test(wti.rets))
+    
+    
+est.tests <- data.frame(test = c("ADF",
+                                 "KPSS"),
+                        alt.hip = c(original.series[[1]]$alternative,
+                                    original.series[[2]]$alternative),
+                        original.series.pvalue = c(original.series[[1]]$p.value,
+                                                   original.series[[2]]$p.value),
+                        return.series.pvalue = c(returns.series[[1]]$p.value,
+                                                 returns.series[[2]]$p.value))
+
+colnames(est.tests) <- c("Teste","Hipótese alternativa", "p-value (série original)", "p-value (série de retornos)")
+
+kable(est.tests, 'latex', longtable = T,
+      caption = '\\label{tab:tab1}
+      Testes de estacionariedade aplicados nos preços originais e nos retornos.',
+      booktabs = T) %>% 
+    kable_styling(position = 'center')
+rm(original.series, returns.series)
+
+```
+
+#### Teste de auto-correlação
+Testou-se a auto-correlação _Box-Pierce_ da série de retornos por meio da rotina `Box.test()`. A hipótese nula deste teste é de que as observações são independentes umas das outras. O que equivale testar se não há independência linear nos dados da série. Conforme observado na tabela \ref{tab:tab2}, os testes apontam para a hipótese alternativa de que existe correlação linear nos valores da série. Além disso, conforme são aumentados os parâmetros do _lag_, observamos que o p-valor também aumenta.
+
+```{r fig.align='center', fig.pos='H'}
+
+box.lag1 <- Box.test(wti.rets, lag=1)
+box.lag2 <- Box.test(wti.rets, lag=5)
+box.lag3 <- Box.test(wti.rets, lag=10)
+
+box.stats <- data.frame(statistic = c(box.lag1$statistic, 
+                                      box.lag2$statistic,
+                                      box.lag3$statistic),
+                        p.value = c(box.lag1$p.value,
+                                    box.lag2$p.value,
+                                    box.lag3$p.value),
+                        lag = c(1,5,10),
+                        df = c(1,5,10))
+
+colnames(box.stats) <- c("X-squared", "P-valor", "lag", "DF")
+
+kable(box.stats, 'latex', longtable = T,
+      caption = '\\label{tab:tab2}
+      Testes de auto-correlação Box-Pierce aplicados na série de retornos variando o parâmetro lag.',
+      booktabs = T) %>% 
+    kable_styling(position = 'center')
+rm(box.lag1, box.lag2, box.lag3)
+```
+
+```{r fig.width=6, fig.height=3.5, fig.align='center', fig.cap='Gráficos de auto-correlação e auto-correlação parcial da série de preços originais.'}
+
+par(cex.lab = .75, cex.axis = .75, cex.main = .75)
+par(mfrow=c(1,2))
+acf(wti)
+pacf(wti)
+```
+
+```{r fig.width=6, fig.height=3.5, fig.align='center', fig.cap='\\label{fig:acf-pacf}Gráficos de auto-correlação e auto-correlação parcial da série de retornos.'}
+par(cex.lab = .75, cex.axis = .75, cex.main = .75)
+par(mfrow=c(1,2))
+acf(wti.rets)
+pacf(wti.rets)
+```
+
+A partir da observação dos gráficos de auto-correlação e auto-correlação parcial da figura \ref{fig:acf-pacf}, é notável a dificuldade em se estimar um modelo ARMA com base apenas nos _lags_ significantes. Além disso, as correlações são relativamente próximas de 0. De acordo com \citeonline[p.~3]{ding2011modeling}, modelos dos tipos AR, MA, ARMA e ARIMA são mais aplicáveis a fenômenos de curta duração e não se mostram eficientes em lidar, sozinhos, com a existência do fenômeno denominado _memória longa_.
+
+#### Teste Jarque-Bera
+O teste Jarque-Bera testa a hipótese nula de normalidade nos dados. O resultado do teste é dado a seguir. 
+
+```{r}
+jarque.bera.test(wti.rets)
+```
+
+Verifica-se um p-valor baixo o que permite descartar a hipótese se nula de normalidade dos dados.
+
+#### Teste ARCH-LM
+O teste Arch-LM verifica a hipótese nula de que não há efeitos de heterocedasticidade condicional auto-regressiva. O teste realizado apresenta os seguintes resultados:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ArchTest(wti.rets)
+```
+
+O p-valor baixo sugere que é possível rejeitar a hipótese nula de que não existem efeitos de heterocedasticidade condicional. Em outras palavras, o teste confirma que os dados não se comportam de forma homocedástica e a variância (volatilidade) depende do tempo.
+
+
+### Seleção do modelo ARMA(p, q)
+Os parâmetros $p$ e $q$ foram obtidos por intermédio de execuções da função `arima()`. Posteriormente, foram extraídos os critérios de informação AIC (Akaike Information Criterion) e BIC  (Bayes information Criterion). 
+```{r fig.align='center', fig.pos='H'}
+#auto.arima(wti.rets, trace=TRUE)
+ar = 2
+ma = 2
+
+model.df <- data.frame(order=numeric(),
+                       aic=numeric(),
+                       bic=numeric())
+
+for(i in 0:ar) {
+    for(j in 0:ma) {
+        model = arima(wti.rets, order = c(i,0,j))
+        arma.order = paste("ARMA(",i, ", ", j,")", sep = '')
+        aic = AIC(model)
+        bic = BIC(model)
+        
+        model.df[nrow(model.df)+1,] <- c(arma.order, round(aic,6), round(bic,4))
+    }
+}
+colnames(model.df) <- c('', 'AIC', 'BIC')
+
+kable(model.df, 'latex', longtable = T,
+      caption = '\\label{tab:models}
+      Modelos e critério de informação. O melhor modelo é ARMA(0, 1)',
+      booktabs = T) %>% 
+    kable_styling(position = 'center')
+rm(model.df,i,j,ar,ma,model,arma.order,aic,bic)
+```
+
+Baseado nos critérios de infromação, podemos dizer que o modelo que melhor se ajusta é um média móvel de primeira ordem. Confirma-se pela tabela \ref{tab:models} que o modelo com menorer AIC e BIC é o ARMA(0,1). Logo a equação do modelo de média condicional é do seguinte tipo:
+
+\begin{equation}
+X_t =  \theta Z_{t-1} + Z_t
+\end{equation}
+
+\pagebreak
+
+### Estimação
+As tabelas \ref{tab:sgarch-params}, \ref{tab:aparch-params} e \ref{tab:egarch-params} apresentam respectivamente as estimações de modelos ARMA(0,1)-SGARCH($p,q$), ARMA(0,1)-APARCH($p,q$) e ARMA(0,1)-EGARCH($p,q$). Para cada estimação foram utilizadas os modelos de distribuição _student-t_ (`std`), _ged_ e _skew-student_ (`sstd`). Ao final de cada tabela são apresentados os critérios de informação Akaike (AIC), Bayes (BIC), Shibata e Hannan-Quinn, tendo sido marcados em negrito os melhores (mínimos) critérios. Os parâmetros ótimos, erro padrão (_standard error_) e p-valor aparecem, nesta ordem, em cada célula. 
+
+Nos modelos sGARCH e apARCH, a ordem que apresenta menores critérios de informação é (1,2) com a distribuição `sstd`. Apenas o modelo eGARCH tem mínimo critério de informação na distribuição `sstd` e ordem (2,1). Desta forma, podemos sugerir que, pelo critério de informação, o modelo que melhor se ajusta aos dados é o ARMA(0,1)-APARCH(1,2) com distribuição `sstd`.
+
+Com base na tabela \ref{tab:aparch-params}, os parâmetros ótimos com p-valores significantes são:
+
+\begin{enumerate}[label=(\roman*)]
+\item $\alpha_1=0.09359$
+\item $\beta_1=0.43981$
+\item $\beta_2=0.47789$
+\item $\gamma_1=0.26282$
+\item $\delta=1.10465$
+\end{enumerate}
+
+A equação do modelo APARCH(1,2) pode então ser escrita:
+
+\begin{equation}
+h_t^{1.105} = 0.0936 (|y_{t-1}|-0.263y_{t-1})^{1.105} + 0.434h_{t-1}^{1.105} + 0.478h_{t-2}^{1.105}
+\end{equation}
+
+
+```{r eval=FALSE}
+sGARCH_2.1_sstd.spec <- ugarchspec(variance.model = list(model="sGARCH", 
+                                             garchOrder=c(2,1), 
+                                             submodel=NULL, 
+                                             variance.targeting=FALSE),
+                             mean.model = list(armaOrder=c(0,1), 
+                                               include.mean=FALSE),
+                       distribution.model="sstd")
+sGARCH_2.1_sstd.fit <- ugarchfit(sGARCH_2.1_sstd.spec, wti.rets, solver="solnp")
+
+```
+
+\input{tab-sgarch.tex}
+\pagebreak
+
+```{r eval=TRUE, message=FALSE, warning=FALSE}
+apARCH_1.2_sstd.spec <- ugarchspec(variance.model = list(model="apARCH", 
+                                             garchOrder=c(1,2), 
+                                             submodel=NULL, 
+                                             variance.targeting=FALSE),
+                             mean.model = list(armaOrder=c(0,1), 
+                                               include.mean=FALSE),
+                       distribution.model="sstd")
+apARCH_1.2_sstd.fit <- ugarchfit(apARCH_1.2_sstd.spec, wti.rets, solver="solnp")
+```
+
+\input{tab-aparch.tex}
+\pagebreak
+
+```{r eval=FALSE}
+eGARCH_2.1_sstd.spec <- ugarchspec(variance.model = list(model="eGARCH", 
+                                             garchOrder=c(2,1), 
+                                             submodel=NULL, 
+                                             variance.targeting=FALSE),
+                             mean.model = list(armaOrder=c(0,1), 
+                                               include.mean=FALSE),
+                       distribution.model="sstd")
+eGARCH_2.1_sstd.fit <- ugarchfit(eGARCH_2.1_sstd.spec, wti.rets, solver="solnp")
+```
+
+\input{tab-egarch.tex}
+\pagebreak
+
+### Análise dos resíduos
+
+A figura \ref{fig:acf-res} exibe o histograma de distribuição e gráfico de auto-correlação dos resíduos. Observa-se dois _lags_ onde a correlação é significante: 5 e 25. Contudo, isso não é suficiente para afirmar que os resíduos não apresentam característica de ruído branco.
+
+```{r fig.width=6, fig.align='center', fig.cap='\\label{fig:acf-res}Histograma dos resíduos do ajuste e gráfico de auto-correlação.'}
+res <- apARCH_1.2_sstd.fit@fit$residuals
+
+par(cex.lab = .75, cex.axis = .75, cex.main = .75)
+par(mfrow=c(1,2))
+acf(res)
+hist(res, 30)
+```
+
+O histograma dos resíduos é apresentado à direita da figura \ref{fig:acf-res}. Uma análise mais atenta mostra que a curtose da distribuição é `r kurtosis(res)` e a assimetria é `r skewness(res)`. Isso significa que é uma distribuição que possui as caudas levemente mais pesadas e assimétrica.
+
+A figura \ref{fig:qqplot} apresenta a comparação da distribuição dos quantis dos resíduos com a curva normal. Vemos um alinhamento satisfatório da distribuição de resíduos e desvios em ambas a pontas. Pela inspeção visual, sugere-se que o modelo fez um trabalho razoável. 
+
+```{r fig.width=6, fig.align='center', fig.cap='\\label{fig:qqplot}Comparativo da distribuição dos quantis com a normal (qqplot). À esquerda a série de retornos. À direita os resíduos do modelo ARMA(0,1)-APARCH(1,2).'}
+par(cex.lab = .75, cex.axis = .75, cex.main = .75)
+par(mfrow=c(2,1))
+
+qqnorm(wti.rets, cex = .5); qqline(wti.rets, col="red")
+qqnorm(res, cex = .5); qqline(res, col="red")
+```
+
+Por fim, a tabela \ref{tab:res-summary} apresenta um sumário dos testes aplicados na série de resíduos. O teste _Box-Pierce_ indica correlação linear e que os resíduos não são independentes. O teste Jarque-Bera indica não normalidade. O teste arch aponta que há efeitos de heterocedasticidade condicional. Isso indica que não é possível concluir sobre a fidedignidade do modelo proposto sendo necessário, portanto, uma análise mais adequada de modelos adjacentes.
+
+```{r}
+box <- Box.test(res)
+arch <- ArchTest(res)
+jb <- jarque.bera.test(res)
+
+res.summary <- data.frame(test = c("Box.test", "ArchTest", "Jarque-Bera"),
+                          stats = c(box$statistic, 
+                                    arch$statistic, jb$statistic),
+                          p.value = c(box$p.value, arch$p.value, 
+                                      jb$p.value))
+
+colnames(res.summary) <- c("Teste", "Estatística", "p-valor")
+
+kable(res.summary, 'latex', longtable = T,
+      caption = '\\label{tab:res-summary}
+      Sumário dos testes na série de resíduos.',
+      booktabs = T) %>% 
+    kable_styling(position = 'center')
+rm(box, arch, jb, res.summary)
+```
+
+### Conclusão
+Pelo estudo da série de retornos do primeiro contrato de WTI foram observadas as características das séries financeiras como caudas pesadas, curtose e agrupamento de volatilidade. Foi utilizado o modelo ARMA(0,1) que foi escolhido pelo critério de informação. Para a série de preços foram estimadas três diferentes ordens para os modelos sGARCH, APARCH e EGARCH com três diferentes tipos de distribuição, `std`, `ged` e `sstd`. Foi verificado que o modelo com menor critério de informação é o ARMA(0,1)-APARCh(1,2) com distribuição `sstd`. Apesar de ter se chagada à um modelo, os resíduos não indicam que o mesmo não é incontestável para previsão da volatilidade da série analisada.
+
+
+
+\pagebreak
+\bibliography{refs.bib}
